@@ -1,0 +1,75 @@
+# https://taskfile.dev
+
+version: '3'
+
+env:
+  GOOS: linux
+  GOARCH: amd64
+
+tasks:
+  clean:
+    desc: Remove build and dist dirs
+    cmds:
+    - rm -rf build dist
+
+  build:
+    desc: Build lambda functions
+    cmds:
+      - mkdir -p build
+      - go build -o build/handler github.com/kerma/lambda-logger/lambda
+    sources:
+      - lambda/**/*.go
+    generates:
+      - build/handler
+    silent: true
+
+  package:
+    desc: Create lambda zip file
+    deps: [build]
+    cmds:
+      - mkdir -p dist
+      - zip -j dist/handler.zip build/handler
+    sources:
+      - build/*
+    generates:
+      - dist/handler.zip
+    silent: true
+
+  create:
+    desc: Create lambda function
+    vars:
+      ROLE:
+#        sh: aws iam create-role --role-name logger-test --assume-role-policy-document file://lambda/trust-policy.json | jq -r .Role.Arn
+        sh: aws iam get-role --role-name logger-test | jq -r .Role.Arn
+    cmds:
+      - aws iam attach-role-policy --role-name logger-test --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - sleep 3
+      - aws lambda create-function --function-name logger-test --runtime go1.x --role {{.ROLE}} --handler handler --zip-file fileb://dist/handler.zip
+
+  deploy:
+    deps: [package]
+    desc: Deploy webhook function
+    cmds:
+      - aws lambda update-function-code --function-name logger-test --zip-file fileb://dist/handler.zip | jq -r .LastUpdateStatus
+
+  invoke:
+    desc: Invoke test function
+    cmds:
+      - aws lambda invoke --function-name logger-test --payload fileb://lambda/payload.json lambda/output.json
+
+  logs:
+    desc: Get logs
+    vars:
+      QUERY:
+        sh:  aws logs start-query --log-group-name '/aws/lambda/logger-test' --start-time `date -v-30M "+%s"` --end-time `date "+%s"` --query-string 'fields message | filter apiStage="prod"' | jq -r .queryId
+    cmds:
+      - sleep 3
+      - aws logs get-query-results --query-id {{.QUERY}}
+
+  delete:
+    desc: Delete lambda function
+    cmds:
+      - aws iam detach-role-policy --role-name logger-test --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      - aws iam delete-role --role-name logger-test
+      - aws lambda delete-function --function-name logger-test
+
