@@ -11,13 +11,8 @@ func TestLogger(t *testing.T) {
 	var expectedOut = "{\"key\":\"value\",\"message\":\"Message nr 1\"}\n"
 	var out bytes.Buffer
 	w := bufio.NewWriter(&out)
-	log := &Logger{
-		errorKey:   defaultErrorKey,
-		messageKey: defaultMessageKey,
-		params:     make(params, 0),
-		w:          w,
-		serialize:  JsonSerializer(),
-	}
+	log := New()
+	log.w = w
 	log.BindString("key", "value").SetMessageKey("message").Printf("%s nr %d", "Message", 1)
 
 	_ = w.Flush()

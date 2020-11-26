@@ -9,10 +9,13 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 )
 
-var (
+const (
 	defaultErrorKey   = "error"
-	defaultMessageKey = "log"
-	environmentVars   = map[string]string{
+	defaultMessageKey = "log" // both @message and @log are used by cloudwatch. Need a better key here to avoid confusion
+)
+
+var (
+	environmentVars = map[string]string{
 		"AWS_LAMBDA_FUNCTION_NAME":    "functionName",
 		"AWS_LAMBDA_FUNCTION_VERSION": "functionVersion",
 	}
@@ -38,12 +41,17 @@ type Logger struct {
 
 type params map[string]interface{}
 
-// NewFromRequest creates a new Logger instance using values from APIGatewayProxyRequest
-func NewFromRequest(req events.APIGatewayProxyRequest) *Logger {
-	return newWithSerializer(req, JsonSerializer())
+// New creates a initiated Logger instance
+func New() *Logger {
+	return newWithSerializer(nil, JsonSerializer())
 }
 
-func newWithSerializer(req events.APIGatewayProxyRequest, s Serializer) *Logger {
+// NewFromRequest creates a new Logger instance using values from APIGatewayProxyRequest
+func NewFromRequest(req events.APIGatewayProxyRequest) *Logger {
+	return newWithSerializer(&req, JsonSerializer())
+}
+
+func newWithSerializer(req *events.APIGatewayProxyRequest, s Serializer) *Logger {
 	l := &Logger{
 		errorKey:   defaultErrorKey,
 		messageKey: defaultMessageKey,
@@ -51,7 +59,9 @@ func newWithSerializer(req events.APIGatewayProxyRequest, s Serializer) *Logger 
 		w:          os.Stdout,
 		serialize:  s,
 	}
-	l.BindRequest(req)
+	if req != nil {
+		l.BindRequest(*req)
+	}
 	return l
 }
 
